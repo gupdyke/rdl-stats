@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RDL Stats</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>RDL Stats</h1>
+    <fieldset class="mode">
+      <label><input type="radio" name="mode" value="rdl" checked> RDL</label>
+      <label><input type="radio" name="mode" value="personal"> Personal</label>
+    </fieldset>
+  </header>
+
+  <section id="rdl-controls" class="controls">
+    <div class="row">
+      <label>Season <select id="season"></select></label>
+      <label>Week <select id="newsletter"></select></label>
+      <label>View <select id="rdl-view">
+        <option value="browse">Browse</option>
+        <option value="teams">Compare teams</option>
+        <option value="players">Compare players</option>
+      </select></label>
+    </div>
+    <div id="search-row" class="row">
+      <div class="search">
+        <label for="player-search">Find player</label>
+        <input type="search" id="player-search" placeholder="Type a name…" autocomplete="off">
+        <ul id="search-results" hidden></ul>
+      </div>
+    </div>
+    <div id="browse-controls" class="row">
+      <label>Division <select id="division"></select></label>
+      <label>Team <select id="team"></select></label>
+      <label>Player <select id="player"></select></label>
+    </div>
+    <div id="compare-controls" class="row" hidden>
+      <label>Division <select id="cmp-division"></select></label>
+      <label><span id="cmp-add-label">Add</span> <select id="cmp-add"></select></label>
+      <button id="cmp-clear" type="button">Clear</button>
+      <div id="chips" class="chips"></div>
+    </div>
+    <fieldset class="groups">
+      <legend>Show</legend>
+      <label><input type="checkbox" value="singles" checked> Singles</label>
+      <label><input type="checkbox" value="doubles" checked> Doubles</label>
+      <label><input type="checkbox" value="overall" checked> Overall</label>
+      <label><input type="checkbox" value="allstar" checked> All-Star</label>
+      <label><input type="checkbox" value="tiebreak"> Tiebreakers</label>
+    </fieldset>
+  </section>
+
+  <section id="personal-controls" class="controls" hidden>
+    <fieldset class="sub">
+      <label><input type="radio" name="pmode" value="practice" checked> Practice</label>
+      <label><input type="radio" name="pmode" value="files"> Other files</label>
+    </fieldset>
+    <div id="practice-controls" class="row">
+      <label>Thrower <select id="thrower"></select></label>
+      <label>Opponent <select id="opponent"></select></label>
+      <label>From <select id="from"></select></label>
+      <label>To <select id="to"></select></label>
+      <label>View <select id="view">
+        <option value="table">Sessions + totals</option>
+        <option value="trend">Trend</option>
+        <option value="h2h">Head-to-head</option>
+      </select></label>
+      <label id="metric-wrap" hidden>Metric <select id="metric"></select></label>
+      <fieldset class="cats">
+        <legend>Show</legend>
+        <label><input type="checkbox" value="General" checked> General</label>
+        <label><input type="checkbox" value="301" checked> 301</label>
+        <label><input type="checkbox" value="501" checked> 501</label>
+        <label><input type="checkbox" value="Cricket" checked> Cricket</label>
+      </fieldset>
+    </div>
+    <div id="files-controls" class="row" hidden>
+      <label>File <select id="pfile"></select></label>
+    </div>
+  </section>
+
+  <main id="out"></main>
+  <footer class="stamp">Updated Oct 4, 2026 3:04 PM</footer>
+  <script>window.STATS_PUBLIC = true;</script>
+  <script src="app.js"></script>
+</body>
+</html>
