@@ -6,6 +6,14 @@ let news = null;          // parsed newsletter currently selected
 // Division view's tables; the comparison tables have their own ids.
 const sorts = {};
 const resetViewSorts = () => { delete sorts.main; delete sorts.more; };
+// Every table has Collapse in its top-left cell: it shrinks that table to its top row (and
+// Expand brings it back). Keyed by table; a new pick (dropdowns, Search, Reset) expands them all.
+const collapsed = new Set();
+function collapseButton(key) {
+  const b = el("button", { type: "button", className: "collapse" }, collapsed.has(key) ? "Expand" : "Collapse");
+  b.onclick = () => { if (!collapsed.delete(key)) collapsed.add(key); render(); };
+  return b;
+}
 const NAME = "__name";   // sort key for the Player/Team column (alphabetical)
 
 // ---- column groups -------------------------------------------------------
@@ -35,7 +43,7 @@ const GROUPS = {
   allstar:  { title: "All-Star", box: true, cols: [
     { h: "Points", f: num("asp", 1), k: "asp" },
     { h: "Avg", f: num("asp_avg", 3), k: "asp_avg" } ] },
-  tiebreak: { title: "Tiebreakers", cols: [
+  tiebreak: { title: "Tiebreakers", box: true, cols: [
     { h: "W-L", f: wl("tb_w", "tb_l"), k: "tb_w" } ] },
 };
 // Team rows end with the team's standings (match record and points, from Pg2),
@@ -116,7 +124,9 @@ function statTable(rows, { id, nameHeader, name, total, removeFrom, addable, def
     th.append(el("span", { className: sort.key === key ? "arrow" : "arrow idle" }, sort.key !== key ? " ⇅" : sort.desc ? " ▼" : " ▲"));
     return th;
   };
-  top.append(el("th", { className: "grp box" }, ""));   // the name column is boxed too
+  const corner = el("th", { className: "grp box corner" });   // the name column is boxed too
+  corner.append(collapseButton(id));
+  top.append(corner);
   const nameTh = Object.assign(heading(nameHeader, NAME), { className: "name bl br", title: nameHeader === "Player" ? "Sort by player ID" : "Sort A-Z" });
   nameTh.onclick = () => { sorts[id] = { key: NAME, desc: sort.key === NAME ? !sort.desc : false }; render(); };
   sub.append(nameTh);
@@ -129,7 +139,8 @@ function statTable(rows, { id, nameHeader, name, total, removeFrom, addable, def
     }
   }
   const line = (r, label, cls) => {
-    const tr = el("tr", { className: cls || "" });
+    const inCmp = addable && r.key != null && (r.kind === "team" ? picked.teams : picked.players).includes(r.key);
+    const tr = el("tr", { className: [cls, inCmp && "picked"].filter(Boolean).join(" ") });   // in the comparison: highlighted
     const td = el("td", { className: "name bx bl br" });
     if (removeFrom) td.append(removeButton(removeFrom, r.key, r.label));   // comparison tables
     else if (addable && r.key != null) td.append(addButton(r.kind === "team" ? picked.teams : picked.players, r.key, r.label));
@@ -142,8 +153,9 @@ function statTable(rows, { id, nameHeader, name, total, removeFrom, addable, def
   rows.forEach((r) => tbody.append(line(r, name(r))));
   if (total) tbody.append(line(total, "Team total", "total"));
   const table = el("table", { className: "stats" });
-  table.append(el("thead"), tbody);
-  table.tHead.append(top, sub);
+  table.append(el("thead"));
+  if (collapsed.has(id)) table.tHead.append(top);   // just the group headings and Expand
+  else { table.tHead.append(top, sub); table.append(tbody); }
   const wrap = el("div", { className: "scroll" });
   wrap.append(table);
   return wrap;
@@ -257,7 +269,7 @@ function fillPlayers() {
   render();
 }
 
-function renderRDL() {
+function renderStandings() {
   if (!news) return;
   const teams = teamsOf();
   const team = teams.find((t) => t.code === $("team").value);
@@ -266,12 +278,8 @@ function renderRDL() {
   const owner = num && teams.find((t) => t.code === code);
   const p = owner && owner.players.find((p) => String(p.number) === num);
   const noPlayers = $("player").value === "none";   // Player: None = team rows only
-  const trophies = $("trophy").value === "*" ? news.trophies || []
-    : (news.trophies || []).filter((b) => b.category === $("trophy").value);
   let view, more = [];   // more = the division's players list, hidden while comparing
-  if (trophies.length) {
-    view = trophyView(trophies);
-  } else if (p) {
+  if (p) {
     view = [el("h2", {}, `${p.name} — ${owner.code} - ${owner.name}`),
       statTable(withLabels([{ ...owner, players: [p] }]), { id: "main", nameHeader: "Player", name: (r) => r.label, addable: true })];
   } else if (team && noPlayers) {
@@ -320,29 +328,14 @@ function trophyLines(lines) {
 }
 function fillTrophies() {
   const cats = (news?.trophies || []).map((b) => [b.category, b.category]);
-  fill($("trophy"), [["", "None"], ["*", "All"], ...cats], true);   // All = every category
+  fill($("trophy"), [["*", "All"], ...cats], true);   // All = every category
 }
-// One boxed table, styled like the stats tables: a title row over the columns.
 // rows: [[first column, lines]]; lines[0] is the result, the rest the player(s) and team.
-function trophyTable(title, firstHeader, rows) {
-  const top = el("tr"), sub = el("tr");
-  top.append(el("th", { className: "grp box", colSpan: 3 }, title));
-  for (const h of [firstHeader, "Result", "Player and team"]) sub.append(el("th", { className: "name bl br" }, h));
-  const tbody = el("tbody");
-  for (const [first, lines] of rows) {
+function trophyTable(title, firstHeader, rows, key) {
+  return boxTable(title, [firstHeader, "Result", "Player and team"], rows.map(([first, lines]) => {
     const [result = "", ...who] = trophyLines(lines);
-    const tr = el("tr");
-    tr.append(el("td", { className: "name bx bl br" }, first),
-      el("td", { className: "name bx bl br" }, /^\(none reported\)$/i.test(result) ? "None reported" : result),
-      el("td", { className: "name lines bx bl br" }, who.join("\n")));
-    tbody.append(tr);
-  }
-  const table = el("table", { className: "stats trophy" });
-  table.append(el("thead"), tbody);
-  table.tHead.append(top, sub);
-  const wrap = el("div", { className: "scroll" });
-  wrap.append(table);
-  return wrap;
+    return [first, /^\(none reported\)$/i.test(result) ? "None reported" : result, who.join("\n")];
+  }), { lines: [0, 2], key });
 }
 // One category: every division (or the one picked). All: with a division, every
 // category in one table; with All divisions, a table per category.
@@ -351,11 +344,111 @@ function trophyView(blocks) {
   const where = div ? `${div} Division` : "All divisions";
   if (blocks.length > 1 && div) {
     return [el("h2", {}, `Trophy darts — ${where}`),
-      trophyTable(`${div} Division`, "Category", blocks.map((b) => [b.category, b.divisions[div] || []]))];
+      trophyTable(`${div} Division`, "Category", blocks.map((b) => [b.category.replace("High Out - ", "High Out -\n"), b.divisions[div] || []]), `trophy:${div}`)];   // two lines: "High Out -" / "301/501/1001"
   }
   return [el("h2", {}, `Trophy darts — ${blocks.length > 1 ? "all categories, " : ""}${where}`),
     ...blocks.map((b) => trophyTable(b.category, "Division",
       Object.keys(b.divisions).filter((d) => !div || d === div).map((d) => [`${d} Division`, b.divisions[d]])))];
+}
+
+function trophyPage() {
+  const blocks = $("trophy").value === "*" ? news.trophies || []
+    : (news.trophies || []).filter((b) => b.category === $("trophy").value);
+  return blocks.length ? trophyView(blocks) : [el("p", { className: "empty" }, "No trophy darts in this newsletter.")];
+}
+
+// ---- Leader boards (Pg6-9), Hot Darts (Pg3), Predictions (Pg5) -----------------
+// A table drawn like the Standings tables: the top row is Collapse (over the frozen columns)
+// and the title (over the rest); then two boxes, the first `split` columns (the names) and
+// the rest. numeric: right-aligned columns; lines: columns that keep their line breaks;
+// freeze: how many columns on the left stay put while the rest scroll sideways (1 or 2);
+// key: which table this is, for Collapse.
+function boxTable(title, headers, rows, { split = 1, numeric = [], lines = [], freeze = 1, key = title } = {}) {
+  const n = headers.length;
+  const cls = (i) => [numeric.includes(i) ? "" : "name", lines.includes(i) && "lines", "bx",
+    i < freeze && `frz frz${i}`, freeze === 2 && i === 0 && "rank",
+    (i === 0 || i === split) && "bl", (i === split - 1 || i === n - 1) && "br"].filter(Boolean).join(" ");
+  const top = el("tr"), sub = el("tr");
+  const corner = el("th", { className: "grp box corner frz frz0", colSpan: freeze });
+  corner.append(collapseButton(key));
+  top.append(corner, el("th", { className: "grp box", colSpan: n - freeze }, title));
+  headers.forEach((h, i) => sub.append(el("th", { className: cls(i) }, h)));
+  const tbody = el("tbody");
+  for (const r of rows) {
+    const tr = el("tr");
+    r.forEach((v, i) => tr.append(el("td", { className: cls(i) }, v)));
+    tbody.append(tr);
+  }
+  const table = el("table", { className: "stats plain" });
+  table.append(el("thead"));
+  if (collapsed.has(key)) table.tHead.append(top);
+  else { table.tHead.append(top, sub); table.append(tbody); }
+  const wrap = el("div", { className: "scroll" });
+  wrap.append(table);
+  return wrap;
+}
+const divisionsShown = (divs) => divs.filter((d) => !$("division").value || d === $("division").value).sort();
+const where = () => ($("division").value ? `${$("division").value} Division` : "All divisions");
+
+// Leader boards: the newsletter's three lists, shown together for each division: rank
+// (blank = tied with the one above), player, team, and its three numbers. Win % and
+// averages to 3 places, like everywhere else. (The end-of-season Doubles list is left out.)
+// Board (next to Division) picks one list, or All.
+const LEADER_BOARDS = [["Singles", "Singles Win Percentage"], ["Singles + Doubles", "Singles + Doubles Win Percentage"],
+  ["All-Star", "All-Star Point Average (ASP)"]];
+function leadersView() {
+  const boards = LEADER_BOARDS.filter(([key]) => $("board").value === "*" || key === $("board").value)
+    .map(([key, title]) => ({ ...(news.leaders || []).find((x) => x.board === key), title }))
+    .filter((b) => b.divisions);
+  if (!boards.length) return [el("p", { className: "empty" }, "No leader boards in this newsletter.")];
+  const fmt = (v, col) => (typeof v === "number" && /%|Ave/.test(col) ? v.toFixed(3) : v ?? "");
+  const table = (b, d) => {
+    let prev;
+    const rows = (b.divisions[d] || []).map((r) => {
+      const rank = r.rank === prev ? "" : r.rank ?? "";
+      prev = r.rank;
+      return [String(rank), r.name, r.team.replace(/^([A-H]\d+)\/\s*/, "$1 - "), ...r.stats.map((v, i) => String(fmt(v, b.columns[i])))];
+    });
+    return boxTable(b.title, ["#", "Player", "Team", ...b.columns], rows, { split: 3, numeric: [0, 3, 4, 5], freeze: 2, key: `leaders:${d}:${b.title}` });
+  };
+  const divs = divisionsShown([...new Set(boards.flatMap((b) => Object.keys(b.divisions)))]);
+  return [el("h2", {}, `Leader boards — ${where()} ${boards[0].note}`.trim()),
+    ...divs.flatMap((d) => {
+      const row = el("div", { className: "boards" });   // side by side when there's room
+      row.append(...boards.map((b) => table(b, d)));
+      return [el("h3", {}, `${d} Division`), row];
+    })];
+}
+
+// Hot Darts: each division's list in the newsletter's order.
+function hotView() {
+  const hot = news.hot_darts || [];
+  if (!hot.length) return [el("p", { className: "empty" }, "No Hot Darts in this newsletter.")];
+  return [el("h2", {}, `Hot Darts — ${where()}`),
+    ...divisionsShown([...new Set(hot.map((h) => h.division))]).map((d) =>
+      boxTable(`${d} Division`, ["Player", "Team", "Hot dart"],
+        hot.filter((h) => h.division === d).map((h) => [h.name, h.team, h.dart]), { split: 2, key: `hot:${d}` }))];
+}
+
+// Predictions, split by division: each division's match write-ups ("Match #2:  (F Div.) ...")
+// and its picks for the rest of the week ("F Division: Two Time 14, ..."), labels in bold.
+// The opening remarks aren't about one division, so they're left out.
+function predictionsView() {
+  const ps = news.predictions || [];
+  if (!ps.length) return [el("p", { className: "empty" }, "No predictions in this newsletter.")];
+  const para = (t, label) => {
+    const m = t.match(/^((?:Match(?:es)?\b[^:]*|[A-H] Division):)\s*(.*)$/);
+    const p = el("p", { className: "prediction" });
+    if (label) p.append(el("b", {}, label), ` ${m ? m[2] : t}`);
+    else if (m) p.append(el("b", {}, m[1]), ` ${m[2]}`);
+    else p.textContent = t;
+    return p;
+  };
+  const divOf = (t) => t.match(/\(([A-H]) Div[^)]*\)/)?.[1] || t.match(/^([A-H]) Division:/)?.[1];
+  const divs = divisionsShown([...new Set(ps.map(divOf).filter(Boolean))]);
+  return [el("h2", {}, `Predictions for the week — ${where()}`),
+    ...divs.flatMap((d) => [el("h3", {}, `${d} Division`),
+      ...ps.filter((t) => divOf(t) === d).map((t) => (/^[A-H] Division:/.test(t) ? para(t, "Other matches:") : para(t)))])];
 }
 
 // ---- RDL compare: teams and players added with + -------------------------------
@@ -372,7 +465,7 @@ const allTeams = () => Object.keys(news?.divisions || {}).sort().flatMap((d) => 
 function compareView() {
   const parts = [];
   const section = (kind, list, found) => {
-    const head = el("h2", { className: "cmp-head" }, `Comparing ${found.length} ${kind}${found.length === 1 ? "" : "s"}`);
+    const head = el("h2", { className: "cmp-head" }, found.length ? found.map((r) => r.label).join(", ") : `No ${kind}s in this week`);
     const clear = el("button", { type: "button" }, "Clear");
     clear.onclick = () => { list.length = 0; render(); };
     head.append(clear);
@@ -400,7 +493,7 @@ function compareView() {
       const which = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
       parts.push(statTable(ts.map(teamRow), { id: "cmp-teams", nameHeader: "Team", name: (r) => r.label, removeFrom: picked.teams }),
         el("h2", {}, `Players on ${which} — ${players.length}`),
-        statTable(players, { id: "cmp-team-players", nameHeader: "Player", name: (r) => r.label }));
+        statTable(players, { id: "cmp-team-players", nameHeader: "Player", name: (r) => r.label, addable: true }));   // + adds a player too
     }
   }
   if (picked.players.length) {
@@ -465,8 +558,8 @@ function pickPlayer(t, p) {
   showPlayer(t, p);
 }
 function pickTeam(t) {
+  collapsed.clear();
   pickSearch();
-  $("trophy").value = "";
   $("division").value = t.code[0];
   resetViewSorts();
   fillTeams();
@@ -476,8 +569,8 @@ function pickTeam(t) {
 }
 // Back to the default view: the saved division and team, the search box empty.
 function resetView() {
+  collapsed.clear();
   closeSearch();
-  $("trophy").value = "";
   $("division").value = homeDivision();
   resetViewSorts();
   $("team").value = "";
@@ -487,7 +580,7 @@ function resetView() {
   fillPlayers();
 }
 function showPlayer(t, p) {
-  $("trophy").value = "";
+  collapsed.clear();
   $("division").value = t.code[0];
   fillTeams();
   $("team").value = t.code;
@@ -497,16 +590,25 @@ function showPlayer(t, p) {
 }
 
 // ---- wiring --------------------------------------------------------------
-const render = () => renderRDL();
+// Page (next to Week): Standings is the stats tables; the others are newsletter pages.
+// A control shows only on the pages in its data-pages.
+const PAGES = { standings: () => renderStandings(), predictions: () => show(predictionsView()),
+  trophy: () => show(trophyPage()), leaders: () => show(leadersView()), hot: () => show(hotView()) };
+const show = (parts) => out.replaceChildren(...parts);
+function render() {
+  const page = $("page").value;
+  document.querySelectorAll("[data-pages]").forEach((e) => (e.hidden = !e.dataset.pages.split(" ").includes(page)));
+  if (news) PAGES[page]();
+}
 
 $("newsletter").onchange = () => { saveView(); loadNewsletter(); };
 $("season").onchange = () => { fillWeeks(); saveView(); loadNewsletter(); };
 // Picking from the dropdowns replaces a searched-for player, so the box empties.
-$("division").onchange = () => { closeSearch(); resetViewSorts(); fillTeams(); saveView(); };
-// Picking a team or player leaves Trophy darts; picking a category shows it.
-$("team").onchange = () => { saveView(); closeSearch(); $("trophy").value = ""; fillPlayers(); };
-$("player").onchange = () => { closeSearch(); $("trophy").value = ""; render(); };
-$("trophy").onchange = () => { closeSearch(); render(); };
+$("division").onchange = () => { collapsed.clear(); closeSearch(); resetViewSorts(); fillTeams(); saveView(); };
+$("team").onchange = () => { collapsed.clear(); saveView(); closeSearch(); fillPlayers(); };
+$("player").onchange = () => { collapsed.clear(); closeSearch(); render(); };
+$("trophy").onchange = $("board").onchange = render;
+$("page").onchange = () => { closeSearch(); render(); };
 $("view-reset").onclick = clearPicked;
 // ? next to Clear opens and closes the how-comparing-works box (a tap, so it works on phones).
 $("cmp-help-toggle").onclick = () => {
@@ -520,7 +622,14 @@ $("search").onkeydown = (e) => {
   if (e.key === "Enter") searchHits(e.target.value)[0]?.pick();
 };
 $("search").onblur = () => { $("search-results").hidden = true; };
-document.querySelectorAll(".groups input").forEach((c) => (c.onchange = render));
+// The Show checkboxes are remembered in this browser, so the next visit opens with the same columns.
+const groupBoxes = document.querySelectorAll(".groups input");
+if (Array.isArray(saved.groups)) groupBoxes.forEach((c) => (c.checked = saved.groups.includes(c.value)));
+groupBoxes.forEach((c) => (c.onchange = () => {
+  saved.groups = [...groupBoxes].filter((b) => b.checked).map((b) => b.value);
+  try { localStorage.setItem(SAVED, JSON.stringify(saved)); } catch {}
+  render();
+}));
 
 (async () => {
   try { catalog = await getJSON("/api/catalog"); }

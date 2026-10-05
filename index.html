@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Raleigh Dart League Stats</title>
-  <link rel="stylesheet" href="style.css?v=20261005145148">
+  <link rel="stylesheet" href="style.css?v=20261005173427">
 </head>
 <body>
   <header>
@@ -15,10 +15,14 @@
       <p><b>Comparing teams and players</b></p>
       <ul>
         <li><b>Add:</b> tap <b>+</b> next to a Search result, or <b>+</b> on a row in the table below.
-          A greyed <b>+</b> means it's already in the comparison.</li>
-        <li><b>Remove one:</b> tap <b>×</b> on its row in a Comparing table.</li>
-        <li><b>Remove all teams</b> or <b>all players:</b> the <b>Clear</b> next to "Comparing N teams" or "Comparing N players".</li>
-        <li><b>Remove everything:</b> the <b>Clear</b> next to Search. It also goes back to your saved division and team.</li>
+          Rows already in the comparison are highlighted, and their <b>+</b> is greyed.</li>
+        <li><b>Collapse</b> (top-left of every table) shrinks that table to its top row, e.g. the table you
+          pick from so the comparison is easier to see; <b>Expand</b> brings it back. Picking something new
+          expands them all.</li>
+        <li><b>Remove one:</b> tap <b>×</b> on its row in the comparison.</li>
+        <li><b>Remove all teams</b> or <b>all players:</b> the <b>Clear</b> next to the compared teams' or players' names.</li>
+        <li><b>Remove everything:</b> <b>Reset</b> (next to Search) clears ALL current comparisons, every team and
+          player at once, and goes back to your saved division and team.</li>
         <li>The comparison stays when you change Season or Week. Anyone not in that week shows as a dashed
           "(not in this week)" tag; its <b>×</b> removes it.</li>
       </ul>
@@ -29,7 +33,7 @@
         <li><b>Team</b> sorts A-Z; <b>Player</b> sorts by player ID (division, then number).</li>
         <li>Team totals start in standings order: best <b>Record</b> first, ties broken by <b>Points</b>
           (while Standings is checked).</li>
-        <li>Each table sorts on its own. Changing Division, or the <b>Clear</b> next to Search, puts the
+        <li>Each table sorts on its own. Changing Division, or <b>Reset</b>, puts the
           table back in its starting order.</li>
       </ul>
     </div>
@@ -39,23 +43,37 @@
     <div class="row">
       <label>Season <select id="season"></select></label>
       <label>Week <select id="newsletter"></select></label>
+      <label>Page <select id="page">
+        <option value="standings">Standings</option>
+        <option value="predictions">Predictions</option>
+        <option value="hot">Hot Darts</option>
+        <option value="trophy">Trophy Darts</option>
+        <option value="leaders">Leader Boards</option>
+      </select></label>
     </div>
-    <div id="search-row" class="row">
+    <!-- data-pages: the pages a control shows on -->
+    <div id="browse-controls" class="row">
+      <label data-pages="standings predictions trophy leaders hot">Division <select id="division"></select></label>
+      <label data-pages="standings">Team <select id="team"></select></label>
+      <label data-pages="standings">Player <select id="player"></select></label>
+      <label data-pages="trophy">Category <select id="trophy"></select></label>
+      <label data-pages="leaders">Board <select id="board">
+        <option value="*">All</option>
+        <option value="Singles">Singles Win Percentage</option>
+        <option value="Singles + Doubles">Singles + Doubles Win Percentage</option>
+        <option value="All-Star">All-Star Point Average (ASP)</option>
+      </select></label>
+    </div>
+    <div id="search-row" class="row" data-pages="standings">
       <div class="search">
         <label for="search">Search</label>
         <input type="search" id="search" placeholder="Player or team…" autocomplete="off">
         <ul id="search-results" class="results" hidden></ul>
       </div>
-      <button id="view-reset" type="button" title="Take everything out of the comparison">Clear</button>
+      <button id="view-reset" type="button" title="Take ALL teams and players out of the comparison">Reset</button>
     </div>
-    <div id="browse-controls" class="row">
-      <label>Division <select id="division"></select></label>
-      <label>Team <select id="team"></select></label>
-      <label>Player <select id="player"></select></label>
-      <label>Trophy darts <select id="trophy"></select></label>
-    </div>
-    <fieldset class="groups">
-      <legend>Show</legend>
+    <fieldset class="groups" data-pages="standings">
+      <legend>Show</legend>   <!-- remembered in this browser for the next visit -->
       <label><input type="checkbox" value="standings" checked> Standings</label>
       <label><input type="checkbox" value="singles" checked> Singles</label>
       <label><input type="checkbox" value="doubles" checked> Doubles</label>
@@ -66,8 +84,8 @@
   </section>
 
   <main id="out"></main>
-  <footer class="stamp">Updated Oct 5, 2026 10:51 AM</footer>
-  <script>window.STATS_PUBLIC = true; window.STATS_VERSION = "20261005145148";</script>
-  <script src="app.js?v=20261005145148"></script>
+  <footer class="stamp">Updated Oct 5, 2026 1:33 PM</footer>
+  <script>window.STATS_PUBLIC = true; window.STATS_VERSION = "20261005173427";</script>
+  <script src="app.js?v=20261005173427"></script>
 </body>
 </html>
