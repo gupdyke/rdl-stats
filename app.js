@@ -147,11 +147,27 @@ function removeButton(list, key, label) {
 // Division "" = All divisions (the whole league).
 const teamsOf = () => (!news ? [] : $("division").value ? news.divisions[$("division").value] || [] : allTeams());
 const playerKey = (t, p) => `${t.code}:${p.number}`;   // numbers repeat across divisions
-const playerLabel = (t, p) => `${p.name} (#${p.number}, ${t.code})`;
+const playerLabel = (t, p) => `${p.name} (${t.code[0]}${p.number})`;   // "Updyke, Gerald (F74)": the player ID
 // Player rows carry the team so the Player column can sort by ID: division, then number (A10 ... F74).
 const playerRow = (t, p) => ({ ...p, label: playerLabel(t, p), div: t.code[0], key: p.name, kind: "player" });
 const teamRow = (t) => ({ ...t.totals, label: `${t.code} - ${t.name}`, key: t.code, kind: "team" });
 const byPlayerId = (a, b) => a.div.localeCompare(b.div) || a.number - b.number;
+
+// ---- saved view: Season, Week and Division, so the page opens where it was left ----
+// Saved in this browser when those dropdowns change (a search jumping to another
+// division doesn't count). If a newer week has come out since, the page opens on it.
+const SAVED = "rdl-stats-view";
+const saved = (() => { try { return JSON.parse(localStorage.getItem(SAVED)) || {}; } catch { return {}; } })();
+function saveView() {
+  Object.assign(saved, { week: $("newsletter").value, division: $("division").value,
+    latest: catalog.rdl[catalog.rdl.length - 1]?.file });
+  try { localStorage.setItem(SAVED, JSON.stringify(saved)); } catch {}
+}
+// The saved division if this week has it, else the first one.
+function homeDivision() {
+  const ok = "division" in saved && [...$("division").options].some((o) => o.value === saved.division);
+  return ok ? saved.division : $("division").options[1]?.value || "";
+}
 
 // Season (from the file name: Sp23, Fa26, ...) then Week. The catalog comes
 // in chronological order, so seasons and weeks list oldest first.
@@ -176,7 +192,7 @@ async function loadNewsletter() {
   const first = !$("division").options.length;
   fill($("division"), [["", "All divisions"], ...divs], true);
   fillTrophies();
-  if (first) $("division").value = divs[0]?.[0] || "";
+  if (first) $("division").value = homeDivision();
   fillTeams();
   if (prevName) followPlayer(prevName);
 }
@@ -255,10 +271,9 @@ function renderRDL() {
   // and the division's long players list is left out. A team or player picked in the dropdowns
   // that's already in the comparison isn't shown twice.
   const comparison = compareView();
-  if (!comparison.length) return out.replaceChildren(...view, ...more), updateAddButton();
+  if (!comparison.length) return out.replaceChildren(...view, ...more);
   const inComparison = p ? picked.players.includes(p.name) : team ? picked.teams.includes(team.code) : false;
   out.replaceChildren(...(inComparison ? [] : [...view, el("hr", { className: "cmp-end" })]), ...comparison);
-  updateAddButton();
 }
 
 // ---- Trophy darts (Pg3): one category, every division or the one picked ------
@@ -315,27 +330,12 @@ function trophyView(blocks) {
       Object.keys(b.divisions).filter((d) => !div || d === div).map((d) => [`${d} Division`, b.divisions[d]])))];
 }
 
-// ---- RDL compare: teams and players added with "Add to comparison" -----------
-// Find player row: Add puts the selected player in the comparison, Clear takes all players out.
-// Find team row: the same for teams. Both Clears also go back to the default view.
-function addPlayer() {
-  const sp = selectedPlayer();
-  if (sp && !picked.players.includes(sp.p.name)) picked.players.push(sp.p.name);
-  render();
-}
-function addTeam() {
-  const code = $("team").value;
-  if (code && !picked.teams.includes(code)) picked.teams.push(code);
-  render();
-}
-function clearPicked(list) {
-  list.length = 0;
+// ---- RDL compare: teams and players added with + -------------------------------
+// Search row: Clear takes everything out of the comparison and goes back to the default view.
+// (A + on a search result, or on a Division view row, adds one.)
+function clearPicked() {
+  picked.teams.length = picked.players.length = 0;
   resetView();
-}
-function updateAddButton() {
-  const sp = selectedPlayer(), code = $("team").value;
-  $("cmp-add").disabled = !sp || picked.players.includes(sp.p.name);
-  $("cmp-add-team").disabled = !code || picked.teams.includes(code);
 }
 // Teams are keyed by code, players by name (so they carry across seasons and weeks).
 const picked = { teams: [], players: [] };   // keys, in the order added
@@ -384,8 +384,9 @@ function compareView() {
   return parts;
 }
 
-// ---- RDL search: Find player / Find team, any part of a name, either order --
-// Each hit is {label, pick}. Picking jumps there; the box keeps the name until Clear.
+// ---- RDL search: players and teams, any part of a name, either order ---------
+// Each hit is {label, pick, list, key}. Picking jumps there; its + adds it to the comparison
+// (list, key). Either empties the box.
 const words = (q) => q.toLowerCase().split(/[\s,]+/).filter(Boolean);
 function searchPlayers(q) {
   const ws = words(q);
@@ -394,54 +395,62 @@ function searchPlayers(q) {
     .filter(({ p }) => ws.every((w) => p.name.toLowerCase().includes(w)))
     .sort((a, b) => a.p.name.localeCompare(b.p.name))
     .slice(0, 30)
-    .map(({ t, p }) => ({ label: playerLabel(t, p), pick: () => pickPlayer(t, p) }));
+    .map(({ t, p }) => ({ label: playerLabel(t, p), pick: () => pickPlayer(t, p), list: picked.players, key: p.name }));
 }
 function searchTeams(q) {   // matches the ID or the name: "f7", "nein", "dart"
   const ws = words(q);
   if (!ws.length || !news) return [];
-  return allTeams().map((t) => ({ label: `${t.code} - ${t.name}`, pick: () => pickTeam(t) }))
+  return allTeams().map((t) => ({ label: `${t.code} - ${t.name}`, pick: () => pickTeam(t), list: picked.teams, key: t.code }))
     .filter((h) => ws.every((w) => h.label.toLowerCase().includes(w)))
     .slice(0, 30);
 }
-const SEARCHES = [
-  { input: "player-search", results: "player-results", hits: searchPlayers, none: "No players found" },
-  { input: "team-search", results: "team-results", hits: searchTeams, none: "No teams found" },
-];
-function renderSearch(s) {
-  const q = $(s.input).value, hits = s.hits(q), ul = $(s.results);
-  ul.replaceChildren(...hits.map((h) => {
+// Teams first (there are only a few dozen), then players; Enter picks the first hit.
+const searchHits = (q) => [...searchTeams(q), ...searchPlayers(q)];
+function renderSearch() {
+  const q = $("search").value, teams = searchTeams(q), players = searchPlayers(q), ul = $("search-results");
+  const item = (h) => {
+    const add = addButton(h.list, h.key, h.label);
+    add.onclick = null;
+    add.onmousedown = (e) => { e.preventDefault(); h.list.push(h.key); pickSearch(); render(); };   // before the input's blur
     const b = el("button", { type: "button" }, h.label);
-    b.onmousedown = (e) => { e.preventDefault(); h.pick(); };   // before the input's blur
-    const li = el("li");
-    li.append(b);
+    b.onmousedown = (e) => { e.preventDefault(); h.pick(); };
+    const li = el("li", { className: "hit" });
+    li.append(add, b);
     return li;
-  }));
-  if (!hits.length && q.trim()) ul.append(el("li", { className: "none" }, s.none));
+  };
+  ul.replaceChildren();
+  for (const [title, hits] of [["Teams", teams], ["Players", players]])
+    if (hits.length) ul.append(el("li", { className: "group" }, title), ...hits.map(item));
+  if (!ul.children.length && q.trim()) ul.append(el("li", { className: "none" }, "No players or teams found"));
   ul.hidden = !ul.children.length;
 }
 function closeSearch() {
-  for (const s of SEARCHES) { $(s.input).value = ""; $(s.results).hidden = true; }
+  $("search").value = "";
+  $("search-results").hidden = true;
+}
+function pickSearch() {   // empty the box and drop focus, so a phone's keyboard closes
+  closeSearch();
+  $("search").blur();
 }
 function pickPlayer(t, p) {
-  closeSearch();
-  $("player-search").value = p.name;
+  pickSearch();
   showPlayer(t, p);
 }
 function pickTeam(t) {
-  closeSearch();
-  $("team-search").value = `${t.code} - ${t.name}`;
+  pickSearch();
   $("trophy").value = "";
   $("division").value = t.code[0];
   resetViewSorts();
   fillTeams();
   $("team").value = t.code;
+  $("player").value = "none";   // just the team, even when one of its players was showing
   fillPlayers();
 }
-// Back to the default view: the first division with all teams and players, both boxes empty.
+// Back to the default view: the saved division's team totals, the search box empty.
 function resetView() {
   closeSearch();
   $("trophy").value = "";
-  $("division").value = $("division").options[1]?.value || "";
+  $("division").value = homeDivision();
   resetViewSorts();
   $("team").value = "";
   fillTeams();
@@ -461,26 +470,21 @@ function showPlayer(t, p) {
 // ---- wiring --------------------------------------------------------------
 const render = () => renderRDL();
 
-$("newsletter").onchange = loadNewsletter;
-$("season").onchange = () => { fillWeeks(); loadNewsletter(); };
+$("newsletter").onchange = () => { saveView(); loadNewsletter(); };
+$("season").onchange = () => { fillWeeks(); saveView(); loadNewsletter(); };
 // Picking from the dropdowns replaces a searched-for player, so the box empties.
-$("division").onchange = () => { closeSearch(); resetViewSorts(); fillTeams(); };
+$("division").onchange = () => { saveView(); closeSearch(); resetViewSorts(); fillTeams(); };
 // Picking a team or player leaves Trophy darts; picking a category shows it.
 $("team").onchange = () => { closeSearch(); $("trophy").value = ""; fillPlayers(); };
 $("player").onchange = () => { closeSearch(); $("trophy").value = ""; render(); };
 $("trophy").onchange = () => { closeSearch(); render(); };
-$("cmp-add").onclick = addPlayer;
-$("cmp-add-team").onclick = addTeam;
-$("view-reset").onclick = () => clearPicked(picked.players);
-$("view-reset-team").onclick = () => clearPicked(picked.teams);
-for (const s of SEARCHES) {
-  $(s.input).oninput = $(s.input).onfocus = () => renderSearch(s);
-  $(s.input).onkeydown = (e) => {
-    if (e.key === "Escape") closeSearch();
-    if (e.key === "Enter") s.hits(e.target.value)[0]?.pick();
-  };
-  $(s.input).onblur = () => { $(s.results).hidden = true; };
-}
+$("view-reset").onclick = clearPicked;
+$("search").oninput = $("search").onfocus = renderSearch;
+$("search").onkeydown = (e) => {
+  if (e.key === "Escape") closeSearch();
+  if (e.key === "Enter") searchHits(e.target.value)[0]?.pick();
+};
+$("search").onblur = () => { $("search-results").hidden = true; };
 document.querySelectorAll(".groups input").forEach((c) => (c.onchange = render));
 
 (async () => {
@@ -488,7 +492,11 @@ document.querySelectorAll(".groups input").forEach((c) => (c.onchange = render))
   catch (e) { return message(e.message, "error"); }
   const seasons = [...new Set(catalog.rdl.map(seasonOf))];
   fill($("season"), seasons.map((x) => [x, x]));
-  $("season").value = seasons[seasons.length - 1] || "";   // start on the latest season and week
+  // Start on the saved week, or the latest when there's a newer one (or nothing saved).
+  const latest = catalog.rdl[catalog.rdl.length - 1];
+  const start = (saved.latest === latest?.file && catalog.rdl.find((n) => n.file === saved.week)) || latest;
+  $("season").value = start ? seasonOf(start) : "";
   fillWeeks();
+  if (start) $("newsletter").value = start.file;
   loadNewsletter();
 })();
