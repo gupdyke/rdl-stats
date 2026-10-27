@@ -1084,6 +1084,32 @@ $("player").onchange = () => { collapsed.clear(); closeSearch(); render(); };
 // One or the other: picking an Opponent puts Match Week back on All, and the other way round.
 $("opponent").onchange = () => { if ($("opponent").value) $("resweek").value = ""; render(); };
 $("resweek").onchange = () => { if ($("resweek").value) $("opponent").value = ""; render(); };
+// Touch screens: Team and Opponent open our own list instead of the phone's, which wraps long
+// team names. The <select> stays the source of truth; the list sets its value and fires "change".
+function pickList(select) {
+  const close = () => { sheet.remove(); document.removeEventListener("keydown", esc); };
+  const esc = (e) => { if (e.key === "Escape") close(); };
+  const sheet = el("div", { className: "picksheet", onclick: (e) => { if (e.target === sheet) close(); } });
+  const list = el("div", { className: "picklist" });
+  for (const o of select.options) {
+    if (o.hidden || o.disabled) continue;
+    list.append(el("button", { type: "button", className: o.value === select.value ? "on" : "", onclick: () => {
+      close();
+      if (select.value !== o.value) { select.value = o.value; select.dispatchEvent(new Event("change")); }
+    } }, o.textContent));
+  }
+  sheet.append(list);
+  document.body.append(sheet);
+  document.addEventListener("keydown", esc);
+  const on = list.querySelector(".on");   // only a long list needs the pick scrolled into view
+  if (on && list.scrollHeight > list.clientHeight) list.scrollTop = on.offsetTop - list.clientHeight / 2;
+}
+for (const id of ["team", "opponent"]) {
+  const select = $(id), wrap = el("span", { className: "pickwrap" });
+  const open = el("button", { type: "button", className: "pickopen", ariaLabel: "Choose", onclick: () => { if (!select.disabled) pickList(select); } });
+  select.before(wrap);
+  wrap.append(select, open);
+}
 $("trophy").onchange = $("board").onchange = $("schedweek").onchange = render;
 $("graph-stat").onchange = $("graph-span").onchange = render;
 $("page").onchange = () => { closeSearch(); render(); };
